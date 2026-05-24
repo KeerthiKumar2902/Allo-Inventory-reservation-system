@@ -71,7 +71,12 @@ export default function ReservationPage() {
     setActioning(action);
     
     try {
-      const res = await fetch(`/api/reservations/${id}/${action}`, { method: "POST" });
+      const res = await fetch(`/api/reservations/${id}/${action}`, { 
+        method: "POST",
+        headers: {
+          "Idempotency-Key": crypto.randomUUID()
+        }
+      });
       const data = await res.json();
       
       if (!res.ok) {

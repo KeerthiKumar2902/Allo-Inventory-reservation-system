@@ -38,7 +38,10 @@ export default function ProductsPage() {
     try {
       const res = await fetch("/api/reservations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID()
+        },
         body: JSON.stringify({ productId, warehouseId, quantity: 1 })
       });
       const data = await res.json();
