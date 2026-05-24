@@ -20,6 +20,7 @@ export async function GET() {
       sku: product.sku,
       description: product.description,
       warehouses: product.inventories.map(inv => ({
+        warehouseId: inv.warehouseId,
         warehouse: inv.warehouse.name,
         location: inv.warehouse.location,
         totalStock: inv.totalStock,
