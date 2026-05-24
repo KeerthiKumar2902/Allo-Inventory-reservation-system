@@ -62,7 +62,7 @@ Reservations are only valid for 10 minutes.
 * **Security:** The cron route is protected by a `CRON_SECRET` authorization header.
 * **Tradeoffs:** A polling cron job means a reservation might technically be held for up to 14 minutes (if it expires right after the 5-minute cron cycle finishes). A better, but infinitely more complex, architecture would be using a Queue Worker (like AWS SQS or Redis BullMQ) to schedule an exact delayed job. Given Vercel's serverless constraints, the Cron approach is the most pragmatic and stable.
 
-## 7. Bonus: Idempotency
+## 7. Idempotency
 To make the APIs truly production-ready, we implemented **Idempotency** for the Reserve and Confirm routes.
 * **Why it matters:** If a user is on a train with a flaky 4G connection, their phone might retry the `POST /confirm` request 3 times. Without idempotency, this could lead to deducting stock 3 times.
 * **The Strategy:** The frontend generates a `crypto.randomUUID()` and sends it in the `Idempotency-Key` header. The backend intercepts this, hashes the request payload, and checks Redis. If it has seen this key before, it intercepts the request and instantly returns the cached `200 OK` response without executing any database logic. The state is cached in Redis for 15 minutes.

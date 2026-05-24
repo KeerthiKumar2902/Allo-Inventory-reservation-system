@@ -22,10 +22,6 @@ export default function ProductsPage() {
   const [reservingId, setReservingId] = useState(null);
   const router = useRouter();
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
   const fetchProducts = async () => {
     try {
       const res = await fetch("/api/products");
@@ -38,6 +34,11 @@ export default function ProductsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchProducts();
+  }, []);
 
   const handleReserve = async (productId, warehouseId) => {
     if (reservingId) return; 

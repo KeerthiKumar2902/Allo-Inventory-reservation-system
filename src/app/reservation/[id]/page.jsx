@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
@@ -17,7 +17,7 @@ export default function ReservationPage() {
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState(null); // 'confirm' or 'release'
 
-  const fetchReservation = async () => {
+  const fetchReservation = useCallback(async () => {
     try {
       const res = await fetch(`/api/reservations/${id}`);
       if (!res.ok) throw new Error("Fetch failed");
@@ -28,13 +28,14 @@ export default function ReservationPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     if (id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchReservation();
     }
-  }, [id]);
+  }, [id, fetchReservation]);
 
   useEffect(() => {
     if (!reservation || reservation.status !== "PENDING") return;
@@ -69,7 +70,7 @@ export default function ReservationPage() {
     const interval = setInterval(updateTimer, 1000);
 
     return () => clearInterval(interval);
-  }, [reservation]);
+  }, [reservation, id]);
 
   const handleAction = async (action) => {
     if (actioning) return; // Prevent double clicks during network flight
