@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db.js';
+import { acquireLock, releaseLock } from '@/lib/redis.js';
 
 const reserveSchema = z.object({
   productId: z.string(),
@@ -18,50 +19,68 @@ export async function POST(req) {
     }
 
     const { productId, warehouseId, quantity } = parsed.data;
+    const lockKey = `lock:inventory:${productId}:${warehouseId}`;
 
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Fetch current inventory to validate stock
-      const inventory = await tx.inventory.findUnique({
-        where: {
-          productId_warehouseId: { productId, warehouseId }
+    // 1. Acquire Redis Lock (serialize access before hitting DB)
+    // 10s TTL prevents deadlocks if server crashes during processing
+    const lockAcquired = await acquireLock(lockKey, 10);
+    if (!lockAcquired) {
+      return NextResponse.json({ error: "System busy. High traffic for this item. Please try again." }, { status: 409 });
+    }
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        // 2. Fetch current inventory to validate stock with FOR UPDATE 
+        // This ensures database-level locking, preventing simultaneous modification
+        const inventoryRows = await tx.$queryRaw`
+          SELECT id, "totalStock", "reservedStock"
+          FROM "Inventory"
+          WHERE "productId" = ${productId} AND "warehouseId" = ${warehouseId}
+          FOR UPDATE
+        `;
+
+        if (inventoryRows.length === 0) {
+          throw new Error("INVENTORY_NOT_FOUND");
         }
+
+        const inventory = inventoryRows[0];
+        const availableStock = inventory.totalStock - inventory.reservedStock;
+
+        // 3. Validate availability safely inside the locked transaction
+        if (availableStock < quantity) {
+          throw new Error("INSUFFICIENT_STOCK");
+        }
+
+        // 4. Create pending reservation (10 minute expiry)
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); 
+
+        const reservation = await tx.reservation.create({
+          data: {
+            productId,
+            warehouseId,
+            quantity,
+            status: "PENDING",
+            expiresAt
+          }
+        });
+
+        // 5. Increment reserved stock
+        await tx.inventory.update({
+          where: { id: inventory.id },
+          data: {
+            reservedStock: { increment: quantity }
+          }
+        });
+
+        return reservation;
       });
 
-      if (!inventory) {
-        throw new Error("INVENTORY_NOT_FOUND");
-      }
-
-      const availableStock = inventory.totalStock - inventory.reservedStock;
-
-      if (availableStock < quantity) {
-        throw new Error("INSUFFICIENT_STOCK");
-      }
-
-      // 2. Create pending reservation (10 minute expiry)
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); 
-
-      const reservation = await tx.reservation.create({
-        data: {
-          productId,
-          warehouseId,
-          quantity,
-          status: "PENDING",
-          expiresAt
-        }
-      });
-
-      // 3. Increment reserved stock
-      await tx.inventory.update({
-        where: { id: inventory.id },
-        data: {
-          reservedStock: { increment: quantity }
-        }
-      });
-
-      return reservation;
-    });
-
-    return NextResponse.json(result, { status: 201 });
+      return NextResponse.json(result, { status: 201 });
+      
+    } finally {
+      // 6. Release Redis Lock to allow the next request through
+      await releaseLock(lockKey);
+    }
 
   } catch (error) {
     if (error.message === "INSUFFICIENT_STOCK") {
