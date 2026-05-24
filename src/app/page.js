@@ -11,10 +11,14 @@ export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reservingId, setReservingId] = useState(null); // Track which warehouse button is loading
+  const [activeIds, setActiveIds] = useState([]); // Track active cart sessions
   const router = useRouter();
 
   useEffect(() => {
     fetchProducts();
+    // Load any active reservations from localStorage so the user doesn't lose them
+    const storedIds = JSON.parse(localStorage.getItem('activeReservationIds') || "[]");
+    setActiveIds(storedIds);
   }, []);
 
   const fetchProducts = async () => {
@@ -57,6 +61,14 @@ export default function ProductsPage() {
       }
       
       toast.success("Inventory successfully reserved!");
+      
+      // Save the new reservation ID to localStorage so we don't lose the cart
+      const existing = JSON.parse(localStorage.getItem('activeReservationIds') || "[]");
+      if (!existing.includes(data.id)) {
+        existing.push(data.id);
+        localStorage.setItem('activeReservationIds', JSON.stringify(existing));
+      }
+
       router.push(`/reservation/${data.id}`);
     } catch (err) {
       toast.error("Network Error: An unexpected error occurred during reservation request.");
@@ -76,6 +88,22 @@ export default function ProductsPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-8">
+      {activeIds.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-lg mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
+          <div>
+            <p className="font-bold flex items-center gap-2">🛒 You have {activeIds.length} active reservation(s) holding inventory!</p>
+            <p className="text-sm opacity-80">Please complete your checkout before the timer expires.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {activeIds.map((id, index) => (
+              <Button key={id} onClick={() => router.push(`/reservation/${id}`)} variant="outline" className="bg-white border-blue-200 hover:bg-blue-100 hover:text-blue-900">
+                Resume Checkout {activeIds.length > 1 ? `#${index + 1}` : ''}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mb-8 border-b pb-4">
         <h1 className="text-3xl font-bold tracking-tight">Available Products</h1>
         <p className="text-muted-foreground mt-2">

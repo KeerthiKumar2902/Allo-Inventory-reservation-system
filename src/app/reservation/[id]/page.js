@@ -53,6 +53,11 @@ export default function ReservationPage() {
         // This prevents the user from attempting invalid confirms.
         setReservation(prev => ({ ...prev, status: "RELEASED" }));
         toast.info("Your reservation expired and the inventory has been automatically released.");
+
+        // Clear from active carts
+        const existing = JSON.parse(localStorage.getItem('activeReservationIds') || "[]");
+        const updated = existing.filter(resId => resId !== id);
+        localStorage.setItem('activeReservationIds', JSON.stringify(updated));
       } else {
         const mins = String(Math.floor(diff / 60)).padStart(2, '0');
         const secs = String(diff % 60).padStart(2, '0');
@@ -95,6 +100,12 @@ export default function ReservationPage() {
       }
       
       toast.success(action === 'confirm' ? 'Purchase successfully confirmed!' : 'Reservation cancelled successfully.');
+      
+      // Clear from active carts
+      const existing = JSON.parse(localStorage.getItem('activeReservationIds') || "[]");
+      const updated = existing.filter(resId => resId !== id);
+      localStorage.setItem('activeReservationIds', JSON.stringify(updated));
+
       fetchReservation();
     } catch (err) {
       toast.error("Network Error: An unexpected issue occurred while contacting the server.");
