@@ -44,7 +44,7 @@ export default function Navbar() {
           <div className="h-9 w-9 bg-white text-teal-700 rounded-xl flex items-center justify-center font-black text-2xl shadow-sm">
             +
           </div>
-          <span className="text-xl font-bold text-white tracking-tight hidden sm:block">Allo Pharmacy</span>
+          <span className="text-xl font-bold text-white tracking-tight hidden sm:block">Allo Inventory</span>
         </div>
 
         <div className="flex items-center gap-4">

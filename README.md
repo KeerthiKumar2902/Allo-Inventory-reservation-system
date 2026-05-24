@@ -1,10 +1,14 @@
-# Allo Pharmacy | Concurrency-Safe Inventory System
+# Allo Inventory | Concurrency-Safe System
 
 **Author:** Keerthi Kumar S, 22MIS0080
 
 ## 1. Project Overview
 
-I built this high-performance, concurrency-safe medical inventory reservation system for Allo Health. My primary goal was to solve the critical e-commerce problem of **"overselling."** I designed the system to ensure that when multiple clinics or users attempt to reserve the exact same limited medical supplies simultaneously, my architecture enforces strict mathematical correctness and never allows the stock to drop below zero.
+I built this high-performance, concurrency-safe inventory reservation system. My primary goal was to solve the critical e-commerce problem of **"overselling."** I designed the system to ensure that when multiple users attempt to reserve the exact same limited supplies simultaneously, my architecture enforces strict mathematical correctness and never allows the stock to drop below zero.
+
+### Important Links
+- **Live Deployment:** [https://allo-inventory-reservation-system-red.vercel.app](https://allo-inventory-reservation-system-red.vercel.app)
+- **GitHub Repository:** [https://github.com/KeerthiKumar2902/Allo-Inventory-reservation-system](https://github.com/KeerthiKumar2902/Allo-Inventory-reservation-system)
 
 ## 2. Architecture
 
@@ -17,19 +21,40 @@ At a high level, I designed a **Dual-Database Coordination Architecture**:
 ### System Data Flow
 
 ```mermaid
-stateDiagram-v2
-    [*] --> ProductListed
-    ProductListed --> LockAcquired : User Clicks Reserve (Redis Mutex Lock)
-    LockAcquired --> ReservationPending : Success (Postgres Transaction)
-    LockAcquired --> 409Conflict : Failure (Lock Already Taken)
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant Vercel API
+    participant Upstash Redis
+    participant Neon Postgres
+    participant Vercel Cron
 
-    ReservationPending --> Confirmed : Checkout Success
-    ReservationPending --> Released : User Cancels Cart
-    ReservationPending --> Expired : 10 Mins Pass
+    User->>Frontend: Click "Reserve"
+    Frontend->>Vercel API: POST /api/reservations (Idempotency-Key)
+    
+    Vercel API->>Upstash Redis: Check Idempotency Key
+    Upstash Redis-->>Vercel API: Not found
+    
+    Vercel API->>Neon Postgres: Atomic update (reservedStock += 1)
+    Neon Postgres-->>Vercel API: Success
+    
+    Vercel API->>Neon Postgres: Create pending reservation (Expires in 10m)
+    Vercel API->>Upstash Redis: Set Idempotency Key
+    Vercel API-->>Frontend: Reservation OK
+    Frontend-->>User: Show Checkout with Countdown
 
-    Expired --> Released : Vercel Cron Job Runs
-    Released --> ProductListed : Stock Mathematically Restored
-    Confirmed --> [*] : Stock Permanently Deducted
+    opt Payment Succeeds
+        User->>Frontend: Click "Pay Now"
+        Frontend->>Vercel API: POST /api/reservations/:id/confirm
+        Vercel API->>Neon Postgres: Update reservation status to 'CONFIRMED'
+        Vercel API->>Neon Postgres: Update totalStock -= 1, reservedStock -= 1
+    end
+
+    opt Expiry (No Payment)
+        Vercel Cron->>Vercel API: GET /api/cron/expire-reservations
+        Vercel API->>Neon Postgres: Find expired PENDING reservations
+        Vercel API->>Neon Postgres: Mark 'RELEASED' & reservedStock -= 1
+    end
 ```
 
 ## 3. Setup Instructions
@@ -90,9 +115,9 @@ Handling concurrent requests was the most critical engineering challenge I tackl
 I configured reservations to only be valid for 10 minutes.
 
 - **The Problem:** I could not rely on the client's browser to tell my server when a reservation expires, because the user might simply close their tab.
-- **My Solution:** I engineered a serverless Cron Job (`GET /api/cron/expire-reservations`) configured via `vercel.json` to execute every 5 minutes and scrub abandoned carts from the database.
-- **Security:** I protected the cron route with a strict `CRON_SECRET` authorization header.
-- **Tradeoffs Considered:** A polling cron job means an abandoned reservation might technically be held for up to 14 minutes (if it expires right after the 5-minute cron cycle finishes). I am aware that a more complex, enterprise-grade architecture would use a Queue Worker (like AWS SQS or Redis BullMQ) to schedule an exact delayed job. However, given Vercel's serverless constraints, my Cron approach proved to be the most pragmatic and highly stable solution.
+- **My Solution:** I engineered a serverless Cron Job endpoint (`GET /api/cron/expire-reservations`) to automatically scrub abandoned carts from the database. Because Vercel's free "Hobby" tier restricts internal cron jobs to running only once a day, I cleverly bypassed this limitation by using an external ping service (**cron-job.org**) to securely trigger the endpoint every 5 minutes.
+- **Security:** I protected the cron route from public abuse by enforcing a strict `CRON_SECRET` Bearer authorization header, which the external cron service passes securely.
+- **Tradeoffs Considered:** A polling cron job means an abandoned reservation might technically be held for up to 14 minutes (if it expires right after the 5-minute cron cycle finishes). I am aware that a more complex, enterprise-grade architecture would use a Queue Worker (like AWS SQS or Redis BullMQ) to schedule an exact delayed job. However, given serverless constraints and the requirement for a free-tier deployment, my external Cron approach proved to be the most pragmatic and highly stable solution.
 
 ## 7. Idempotency Implementation
 
@@ -103,7 +128,11 @@ To make my APIs truly production-ready and resilient, I implemented **Idempotenc
 
 ## 8. Future Improvements
 
-- **Redis Locking Scope:** Currently, my Redis lock specifically targets the product at a specific warehouse. While highly performant, I could improve the spin-lock mechanism to intelligently retry for a few milliseconds before failing, rather than instantly returning a 409 error to the user.
-- **Queue Workers vs. Cron:** As mentioned in my Expiry Strategy, if I were to scale this to a massive enterprise system, I would pivot to an event-driven architecture (using Kafka or RabbitMQ) to handle expirations down to the exact millisecond, rather than relying on a polling cron job.
-- **Authentication:** For this specific demo, I utilized `localStorage` for cart persistence. A full production rollout would require integrating NextAuth.js or Clerk to securely tie reservations to a rigid `UserId` schema.
-- **Monitoring & Observability:** Integrating Datadog or Sentry would be my immediate next step. I would monitor the `409 Conflict` rates to precisely understand how frequently users are competing over the exact same medical inventory.
+- **Lock Retry Mechanism:** While the current Redis lock fails fast and returns a 409 error if a product is being modified, adding a short retry mechanism (spin-lock) could improve the user experience by waiting a few milliseconds before failing.
+- **Event-Driven Expiry:** Replacing the polling cron job with an event-driven architecture (like Redis BullMQ or RabbitMQ) would allow reservations to expire precisely at the 10-minute mark rather than waiting for the next cron interval.
+- **User Authentication:** The current system uses `localStorage` for cart persistence. A future iteration would integrate NextAuth.js or Clerk to tie reservations to authenticated user accounts instead of browser sessions.
+- **Observability:** Adding tools like Datadog or Sentry would help track `409 Conflict` rates to better understand peak concurrency traffic and user behavior.
+
+---
+> [!NOTE]  
+> **Check out the docs for a more detailed understanding of the system's architecture and design patterns.**
