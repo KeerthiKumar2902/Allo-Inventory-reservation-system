@@ -9,26 +9,24 @@ async function main() {
   await prisma.warehouse.deleteMany();
 
   console.log('Seeding products...');
-  // Standard medical placeholder image that works reliably
-  const defaultImage = 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&q=80'; 
-
+  
   const amox = await prisma.product.create({
-    data: { name: 'Amoxicillin 500mg', sku: 'MED-AMOX-500', description: 'Broad-spectrum antibiotic.', imageUrl: defaultImage }
+    data: { name: 'Amoxicillin 500mg', sku: 'MED-AMOX-500', description: 'Broad-spectrum antibiotic.', imageUrl: '/images/amoxicillin.png' }
   });
   const ibu = await prisma.product.create({
-    data: { name: 'Ibuprofen 400mg', sku: 'MED-IBU-400', description: 'Nonsteroidal anti-inflammatory drug.', imageUrl: defaultImage }
+    data: { name: 'Ibuprofen 400mg', sku: 'MED-IBU-400', description: 'Nonsteroidal anti-inflammatory drug.', imageUrl: '/images/ibuprofen.png' }
   });
   const insulin = await prisma.product.create({
-    data: { name: 'Novolog Insulin Pen', sku: 'MED-NOV-PEN', description: 'Fast-acting mealtime insulin.', imageUrl: defaultImage }
+    data: { name: 'Novolog Insulin Pen', sku: 'MED-NOV-PEN', description: 'Fast-acting mealtime insulin.', imageUrl: '/images/insulin.png' }
   });
   const steth = await prisma.product.create({
-    data: { name: 'Littmann Classic III', sku: 'EQP-LITT-C3', description: 'High acoustic sensitivity stethoscope.', imageUrl: defaultImage }
+    data: { name: 'Littmann Classic III', sku: 'EQP-LITT-C3', description: 'High acoustic sensitivity stethoscope.', imageUrl: '/images/stethoscope.png' }
   });
   const paracetamol = await prisma.product.create({
-    data: { name: 'Paracetamol 500mg', sku: 'MED-PARA-500', description: 'Fever reducer and pain reliever.', imageUrl: defaultImage }
+    data: { name: 'Paracetamol 500mg', sku: 'MED-PARA-500', description: 'Fever reducer and pain reliever.', imageUrl: '/images/ibuprofen.png' }
   });
   const bandages = await prisma.product.create({
-    data: { name: 'Surgical Bandages', sku: 'MED-BAND-01', description: 'Sterile surgical bandages.', imageUrl: defaultImage }
+    data: { name: 'Surgical Bandages', sku: 'MED-BAND-01', description: 'Sterile surgical bandages.', imageUrl: '/images/stethoscope.png' }
   });
 
   console.log('Seeding warehouses...');
