@@ -5,22 +5,36 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reservingId, setReservingId] = useState(null); // Track which warehouse button is loading
   const router = useRouter();
 
   useEffect(() => {
-    fetch("/api/products")
-      .then(res => res.json())
-      .then(data => {
-        setProducts(data);
-        setLoading(false);
-      });
+    fetchProducts();
   }, []);
 
+  const fetchProducts = async () => {
+    try {
+      const res = await fetch("/api/products");
+      if (!res.ok) throw new Error("Failed to load inventory");
+      const data = await res.json();
+      setProducts(data);
+    } catch (err) {
+      toast.error("Network error: Could not load products from server");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleReserve = async (productId, warehouseId) => {
+    if (reservingId) return; // Prevent double clicks
+    
+    setReservingId(warehouseId);
+    
     try {
       const res = await fetch("/api/reservations", {
         method: "POST",
@@ -30,21 +44,29 @@ export default function ProductsPage() {
       const data = await res.json();
       
       if (!res.ok) {
-        toast.error(data.error || "Failed to reserve item");
+        if (res.status === 409) {
+          toast.error(data.error || "Stock unavailable. Another customer may have just reserved the last item.");
+          fetchProducts(); // Force a reactive update to sync the new 0 stock state
+        } else {
+          toast.error(data.error || "Failed to reserve item");
+        }
         return;
       }
       
       toast.success("Inventory successfully reserved!");
       router.push(`/reservation/${data.id}`);
     } catch (err) {
-      toast.error("An unexpected error occurred during reservation");
+      toast.error("Network Error: An unexpected error occurred during reservation request.");
+    } finally {
+      setReservingId(null);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen text-muted-foreground">
-        Loading inventory data...
+      <div className="flex flex-col justify-center items-center h-screen text-muted-foreground">
+        <Loader2 className="w-8 h-8 animate-spin mb-4" />
+        <p>Loading real-time inventory...</p>
       </div>
     );
   }
@@ -55,7 +77,7 @@ export default function ProductsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Available Products</h1>
         <p className="text-muted-foreground mt-2">
           Select a warehouse below to reserve a unit for checkout. 
-          Your reservation will hold the inventory safely for 10 minutes.
+          Your reservation will safely hold the inventory for 10 minutes.
         </p>
       </div>
 
@@ -77,6 +99,8 @@ export default function ProductsPage() {
               <div className="flex flex-col gap-3">
                 {product.warehouses.map(wh => {
                   const isAvailable = wh.availableStock > 0;
+                  const isLoading = reservingId === wh.warehouseId;
+                  
                   return (
                     <div key={wh.warehouseId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-md bg-white">
                       <div className="mb-4 sm:mb-0">
@@ -94,11 +118,17 @@ export default function ProductsPage() {
                           </p>
                         </div>
                         <Button 
-                          disabled={!isAvailable}
+                          disabled={!isAvailable || reservingId !== null}
                           onClick={() => handleReserve(product.id, wh.warehouseId)}
-                          className={!isAvailable ? "opacity-50" : ""}
+                          className={!isAvailable ? "opacity-50" : "w-[130px]"}
                         >
-                          {isAvailable ? "Reserve" : "Out of Stock"}
+                          {isLoading ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Reserving</>
+                          ) : isAvailable ? (
+                            "Reserve Unit"
+                          ) : (
+                            "Out of Stock"
+                          )}
                         </Button>
                       </div>
                     </div>
